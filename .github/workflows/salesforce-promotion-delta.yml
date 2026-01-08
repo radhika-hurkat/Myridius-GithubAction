@@ -1,45 +1,31 @@
-
-name: Salesforce Promotion Delta Pipeline
+name: Salesforce Promotion Pipeline
 
 on:
   push:
     branches:
+      - qa
       - sit
       - uat
-      - main
+      - prod
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout full history (needed for HEAD~1 comparisons)
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2️⃣ Install Salesforce CLI (ensures Node >= 20 for SGD v6)
+      # 2️⃣ Install Salesforce CLI
       - name: Install Salesforce CLI
         run: |
           npm install -g @salesforce/cli
           sf --version
-          node --version
 
-      # 3️⃣ Install sfdx-git-delta as an sf plugin (non-interactive) & verify
-      - name: Install sfdx-git-delta plugin
-        run: |
-          # Accept unsigned plugin prompt automatically
-          yes | sf plugins install sfdx-git-delta
-          # List installed plugins to verify
-          sf plugins --core
-          # Fail early if plugin isn't visible
-          if ! sf plugins --core | grep -qi "sfdx-git-delta"; then
-            echo "sfdx-git-delta plugin not installed/visible to sf CLI"
-            exit 1
-          fi
-
-      # 4️⃣ Map branch -> target org (and auth URL)
+      # 3️⃣ Decide target org based on branch
       - name: Set target org
         run: |
           if [ "${GITHUB_REF_NAME}" = "qa" ]; then
@@ -55,11 +41,11 @@ jobs:
             echo "SF_AUTH_URL=${{ secrets.SF_PROD_AUTH_URL }}" >> $GITHUB_ENV
             echo "TARGET_ORG=prod" >> $GITHUB_ENV
           else
-            echo "Unsupported branch: ${GITHUB_REF_NAME}"
+            echo "Unsupported branch"
             exit 1
           fi
 
-      # 5️⃣ Authenticate to Salesforce using SFDX auth URL
+      # 4️⃣ Authenticate Salesforce
       - name: Authenticate Salesforce
         run: |
           echo "$SF_AUTH_URL" > auth.txt
@@ -68,47 +54,11 @@ jobs:
             --set-default \
             --alias $TARGET_ORG
 
-      # 6️⃣ Generate delta between last commit and HEAD
-      - name: Generate delta
-        run: |
-          set -e
-          git fetch origin
-
-          # Try v6 spaced syntax first
-          echo "Attempting: sf sgd source delta ..."
-          if sf sgd source delta \
-            --from "HEAD~1" \
-            --to "HEAD" \
-            --output-dir "delta" \
-            --source-dir "force-app"; then
-            echo "Delta generated via spaced syntax."
-          else
-            # Fallback to colon syntax for older CLI/plugin topic handling
-            echo "Spaced syntax failed; attempting: sf sgd:source:delta ..."
-            sf sgd:source:delta \
-              --from "HEAD~1" \
-              --to "HEAD" \
-              --output "delta" \
-              --source "force-app"
-          fi
-
-          # Optional: list delta files for debugging
-          ls -la delta || true
-          ls -la delta/force-app || true
-
-      # 7️⃣ Skip deploy if nothing changed
-      - name: Check delta content
-        run: |
-          if [ ! -d "delta/force-app" ]; then
-            echo "No metadata changes found. Skipping deployment."
-            exit 0
-          fi
-
-      # 8️⃣ Deploy delta to selected Salesforce org
-      - name: Deploy delta
+      # 5️⃣ Deploy source (STABLE & SAFE)
+      - name: Deploy to Salesforce
         run: |
           sf project deploy start \
-            --source-dir delta/force-app \
+            --source-dir force-app \
             --target-org $TARGET_ORG \
             --test-level NoTestRun \
             --wait 30
