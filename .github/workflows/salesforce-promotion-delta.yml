@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout full git history (required for delta)
+      # 1️⃣ Checkout full history (required for delta)
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -24,11 +24,11 @@ jobs:
           npm install -g @salesforce/cli
           sf version
 
-      # 3️⃣ Install sfdx-git-delta plugin (CORRECT WAY)
-      - name: Install sfdx-git-delta plugin
+      # 3️⃣ Install sfdx-git-delta (STABLE METHOD)
+      - name: Install sfdx-git-delta
         run: |
-          sf plugins install sfdx-git-delta
-          sf plugins
+          npm install -g sfdx-git-delta
+          sfdx-git-delta --version
 
       # 4️⃣ Decide target org based on branch
       - name: Set target org
@@ -44,7 +44,7 @@ jobs:
             echo "TARGET_ORG=prod" >> $GITHUB_ENV
           fi
 
-      # 5️⃣ Authenticate Salesforce org
+      # 5️⃣ Authenticate Salesforce
       - name: Authenticate Salesforce
         run: |
           echo "$SF_AUTH_URL" > auth.txt
@@ -53,17 +53,17 @@ jobs:
             --set-default \
             --alias $TARGET_ORG
 
-      # 6️⃣ Generate delta package
+      # 6️⃣ Generate delta (CORRECT COMMAND)
       - name: Generate delta
         run: |
           git fetch origin
-          sf sgd source delta \
+          sfdx-git-delta \
             --from "HEAD~1" \
             --to "HEAD" \
             --output delta \
             --source force-app
 
-      # 7️⃣ Skip deployment if no delta
+      # 7️⃣ Skip deploy if no delta
       - name: Check delta content
         run: |
           if [ ! -d "delta/force-app" ]; then
@@ -72,7 +72,7 @@ jobs:
           fi
 
       # 8️⃣ Deploy delta to Salesforce
-      - name: Deploy delta to Salesforce
+      - name: Deploy delta
         run: |
           sf project deploy start \
             --source-dir delta/force-app \
