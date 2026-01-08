@@ -1,5 +1,4 @@
-
-name: Salesforce Promotion Delta Pipeline
+name: Salesforce Promotion Pipeline
 
 on:
   push:
@@ -14,37 +13,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout full history (needed for HEAD~1 comparisons)
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2️⃣ Install Salesforce CLI (ensures Node >= 20 for SGD v6)
+      # 2️⃣ Install Salesforce CLI
       - name: Install Salesforce CLI
         run: |
           npm install -g @salesforce/cli
           sf --version
-          node --version
 
-      # 3️⃣ Pre-authorize unsigned plugin so install won't prompt/hang
-      - name: Pre-authorize sfdx-git-delta plugin
-        run: |
-          mkdir -p ~/.config/sf
-          echo '["sfdx-git-delta"]' > ~/.config/sf/unsignedPluginAllowList.json
-          cat ~/.config/sf/unsignedPluginAllowList.json
-
-      # 4️⃣ Install sfdx-git-delta as an sf plugin & verify
-      - name: Install sfdx-git-delta plugin
-        run: |
-          sf plugins install sfdx-git-delta --verbose
-          sf plugins --core
-          if ! sf plugins --core | grep -qi "sfdx-git-delta"; then
-            echo "sfdx-git-delta plugin not installed/visible to sf CLI"
-            exit 1
-          fi
-
-      # 5️⃣ Map branch -> target org (and auth URL)
+      # 3️⃣ Decide target org based on branch
       - name: Set target org
         run: |
           if [ "${GITHUB_REF_NAME}" = "qa" ]; then
@@ -60,11 +41,11 @@ jobs:
             echo "SF_AUTH_URL=${{ secrets.SF_PROD_AUTH_URL }}" >> $GITHUB_ENV
             echo "TARGET_ORG=prod" >> $GITHUB_ENV
           else
-            echo "Unsupported branch: ${GITHUB_REF_NAME}"
+            echo "Unsupported branch"
             exit 1
           fi
 
-      # 6️⃣ Authenticate to Salesforce using SFDX auth URL
+      # 4️⃣ Authenticate Salesforce
       - name: Authenticate Salesforce
         run: |
           echo "$SF_AUTH_URL" > auth.txt
@@ -73,17 +54,11 @@ jobs:
             --set-default \
             --alias $TARGET_ORG
 
-      # 7️⃣ Generate delta between last commit and HEAD
-      - name: Generate delta
+      # 5️⃣ Deploy source (STABLE & SAFE)
+      - name: Deploy to Salesforce
         run: |
-          set -e
-          git fetch origin
-
-          # Ensure output directory exists to avoid "No directory found at delta"
-          mkdir -p ./delta
-
-          echo "Attempting: sf sgd source delta ..."
-          if sf sgd source delta \
-            --from "HEAD~1" \
-            --to "HEAD" \
-            --output-dir "./delta" \
+          sf project deploy start \
+            --source-dir force-app \
+            --target-org $TARGET_ORG \
+            --test-level NoTestRun \
+            --wait 30
