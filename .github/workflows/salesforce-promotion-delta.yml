@@ -13,21 +13,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout full git history
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Install Salesforce CLI
       - name: Install Salesforce CLI
         run: npm install -g @salesforce/cli
 
-      # Install sfdx-git-delta plugin
       - name: Install sfdx-git-delta
         run: sf plugins install sfdx-git-delta
 
-      # Find commit range
       - name: Determine commit range
         run: |
           git fetch origin
@@ -36,7 +32,6 @@ jobs:
           echo "FROM_COMMIT=$FROM_COMMIT" >> $GITHUB_ENV
           echo "TO_COMMIT=$TO_COMMIT" >> $GITHUB_ENV
 
-      # Generate delta package
       - name: Generate delta
         run: |
           sf sgd source delta \
@@ -46,7 +41,6 @@ jobs:
             --generate-delta \
             --source force-app
 
-      # Skip if no changes
       - name: Check delta content
         run: |
           if [ ! -d "delta/force-app" ]; then
@@ -54,29 +48,29 @@ jobs:
             exit 0
           fi
 
-      # Authenticate to Salesforce based on branch
       - name: Authenticate to Salesforce
         run: |
-          if [[ "${GITHUB_REF##*/}" == "qa" ]]; then
+          BRANCH_NAME="${GITHUB_REF##*/}"
+
+          if [ "$BRANCH_NAME" = "qa" ]; then
             echo "${{ secrets.SF_QA_AUTH_URL }}" > auth.txt
             sf org login sfdx-url --sfdx-url-file auth.txt --alias qa
             echo "TARGET_ORG=qa" >> $GITHUB_ENV
-          elif [[ "${GITHUB_REF##*/}" == "sit" ]]; then
+          elif [ "$BRANCH_NAME" = "sit" ]; then
             echo "${{ secrets.SF_SIT_AUTH_URL }}" > auth.txt
             sf org login sfdx-url --sfdx-url-file auth.txt --alias sit
             echo "TARGET_ORG=sit" >> $GITHUB_ENV
-          elif [[ "${GITHUB_REF##*/}" == "uat" ]]; then
+          elif [ "$BRANCH_NAME" = "uat" ]; then
             echo "${{ secrets.SF_UAT_AUTH_URL }}" > auth.txt
             sf org login sfdx-url --sfdx-url-file auth.txt --alias uat
             echo "TARGET_ORG=uat" >> $GITHUB_ENV
-          elif [[ "${GITHUB_REF##*/}" == "prod" ]]; then
+          elif [ "$BRANCH_NAME" = "prod" ]; then
             echo "${{ secrets.SF_PROD_AUTH_URL }}" > auth.txt
             sf org login sfdx-url --sfdx-url-file auth.txt --alias prod
             echo "TARGET_ORG=prod" >> $GITHUB_ENV
           fi
 
-      # Deploy delta only
-      - name: Deploy delta to org
+      - name: Deploy delta
         run: |
           sf project deploy start \
             --target-org $TARGET_ORG \
