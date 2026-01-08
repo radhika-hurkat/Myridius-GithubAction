@@ -1,4 +1,4 @@
-name: Salesforce Promotion (Delta)
+name: Salesforce Promotion Delta Pipeline
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout full git history (REQUIRED for delta)
+      # 1️⃣ Checkout full git history (required for delta)
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -24,27 +24,34 @@ jobs:
           npm install -g @salesforce/cli
           sf version
 
-      # 3️⃣ Install sfdx-git-delta
-      - name: Install sfdx-git-delta
+      # 3️⃣ Install sfdx-git-delta plugin (CORRECT WAY)
+      - name: Install sfdx-git-delta plugin
         run: |
-          npm install -g sfdx-git-delta
+          sf plugins install sfdx-git-delta
+          sf plugins
 
       # 4️⃣ Decide target org based on branch
       - name: Set target org
         run: |
-          if [[ "${GITHUB_REF_NAME}" == "sit" ]]; then
+          if [ "${GITHUB_REF_NAME}" = "sit" ]; then
             echo "SF_AUTH_URL=${{ secrets.SF_SIT_AUTH_URL }}" >> $GITHUB_ENV
-          elif [[ "${GITHUB_REF_NAME}" == "uat" ]]; then
+            echo "TARGET_ORG=sit" >> $GITHUB_ENV
+          elif [ "${GITHUB_REF_NAME}" = "uat" ]; then
             echo "SF_AUTH_URL=${{ secrets.SF_UAT_AUTH_URL }}" >> $GITHUB_ENV
-          elif [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            echo "TARGET_ORG=uat" >> $GITHUB_ENV
+          elif [ "${GITHUB_REF_NAME}" = "main" ]; then
             echo "SF_AUTH_URL=${{ secrets.SF_PROD_AUTH_URL }}" >> $GITHUB_ENV
+            echo "TARGET_ORG=prod" >> $GITHUB_ENV
           fi
 
-      # 5️⃣ Authenticate to Salesforce
-      - name: Authenticate Salesforce Org
+      # 5️⃣ Authenticate Salesforce org
+      - name: Authenticate Salesforce
         run: |
           echo "$SF_AUTH_URL" > auth.txt
-          sf org login sfdx-url --sfdx-url-file auth.txt --set-default
+          sf org login sfdx-url \
+            --sfdx-url-file auth.txt \
+            --set-default \
+            --alias $TARGET_ORG
 
       # 6️⃣ Generate delta package
       - name: Generate delta
@@ -56,10 +63,19 @@ jobs:
             --output delta \
             --source force-app
 
-      # 7️⃣ Deploy delta to org
-      - name: Deploy to Salesforce
+      # 7️⃣ Skip deployment if no delta
+      - name: Check delta content
+        run: |
+          if [ ! -d "delta/force-app" ]; then
+            echo "No metadata changes found. Skipping deployment."
+            exit 0
+          fi
+
+      # 8️⃣ Deploy delta to Salesforce
+      - name: Deploy delta to Salesforce
         run: |
           sf project deploy start \
             --source-dir delta/force-app \
+            --target-org $TARGET_ORG \
             --test-level NoTestRun \
             --wait 30
