@@ -1,0 +1,65 @@
+name: Salesforce Promotion (Delta)
+
+on:
+  push:
+    branches:
+      - sit
+      - uat
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout full git history (REQUIRED for delta)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2️⃣ Install Salesforce CLI
+      - name: Install Salesforce CLI
+        run: |
+          npm install -g @salesforce/cli
+          sf version
+
+      # 3️⃣ Install sfdx-git-delta
+      - name: Install sfdx-git-delta
+        run: |
+          npm install -g sfdx-git-delta
+
+      # 4️⃣ Decide target org based on branch
+      - name: Set target org
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == "sit" ]]; then
+            echo "SF_AUTH_URL=${{ secrets.SF_SIT_AUTH_URL }}" >> $GITHUB_ENV
+          elif [[ "${GITHUB_REF_NAME}" == "uat" ]]; then
+            echo "SF_AUTH_URL=${{ secrets.SF_UAT_AUTH_URL }}" >> $GITHUB_ENV
+          elif [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            echo "SF_AUTH_URL=${{ secrets.SF_PROD_AUTH_URL }}" >> $GITHUB_ENV
+          fi
+
+      # 5️⃣ Authenticate to Salesforce
+      - name: Authenticate Salesforce Org
+        run: |
+          echo "$SF_AUTH_URL" > auth.txt
+          sf org login sfdx-url --sfdx-url-file auth.txt --set-default
+
+      # 6️⃣ Generate delta package
+      - name: Generate delta
+        run: |
+          git fetch origin
+          sf sgd source delta \
+            --from "HEAD~1" \
+            --to "HEAD" \
+            --output delta \
+            --source force-app
+
+      # 7️⃣ Deploy delta to org
+      - name: Deploy to Salesforce
+        run: |
+          sf project deploy start \
+            --source-dir delta/force-app \
+            --test-level NoTestRun \
+            --wait 30
