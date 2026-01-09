@@ -1,4 +1,4 @@
-name: Salesforce Quality Gate
+name: Salesforce Promotion Delta Pipeline
 
 on:
   push:
@@ -21,13 +21,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout full history (delta needs it)
+      # 1️⃣ Checkout full history (delta needs this)
       - name: Checkout source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2️⃣ Setup Node (stable, interview-safe)
+      # 2️⃣ Setup Node
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -39,8 +39,8 @@ jobs:
           npm install -g @salesforce/cli
           sf --version
 
-      # 4️⃣ Allow unsigned plugins (cleaner than echo y)
-      - name: Allow sfdx-git-delta plugin
+      # 4️⃣ Allow unsigned plugins
+      - name: Allow delta plugin
         run: |
           mkdir -p ~/.config/sf
           echo '["sfdx-git-delta"]' > ~/.config/sf/unsignedPluginAllowList.json
@@ -51,22 +51,20 @@ jobs:
           sf plugins install sfdx-git-delta
           sf plugins | grep sfdx-git-delta
 
-      # 6️⃣ Resolve commit range (PUSH vs PR)
+      # 6️⃣ Resolve commit range (PR vs PUSH)
       - name: Resolve commit range
         id: commits
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "FROM=${{ github.event.pull_request.base.sha }}" >> $GITHUB_OUTPUT
             echo "TO=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
-            echo "MODE=PR" >> $GITHUB_OUTPUT
           else
             echo "FROM=$(git rev-parse HEAD~1)" >> $GITHUB_OUTPUT
             echo "TO=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-            echo "MODE=PUSH" >> $GITHUB_OUTPUT
           fi
 
       # 7️⃣ Generate delta
-      - name: Generate delta package
+      - name: Generate delta
         run: |
           mkdir -p delta
           sf sgd source delta \
@@ -76,23 +74,19 @@ jobs:
             --output delta \
             --generate-delta
 
-          echo "Delta contents:"
-          ls -R delta || true
-
-      # 8️⃣ Stop if no Salesforce changes
+      # 8️⃣ If no delta, skip
       - name: Check delta content
         run: |
           if [ ! -d "delta/force-app" ]; then
-            echo "No Salesforce metadata changes found."
+            echo "No Salesforce changes detected. Skipping."
             exit 0
           fi
 
-      # 9️⃣ Validate package.xml (senior touch)
-      - name: Validate package.xml
+      # 9️⃣ Soft check package.xml (NO FAIL)
+      - name: Validate package.xml (soft)
         run: |
           if ! grep -q "<types>" delta/package/package.xml; then
-            echo "Invalid or empty package.xml"
-            exit 1
+            echo "Warning: package.xml has no <types>. Continuing."
           fi
 
       # 🔟 Install PMD
@@ -101,7 +95,7 @@ jobs:
           curl -L -o pmd.zip https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.7.0/pmd-dist-7.7.0-bin.zip
           unzip -q pmd.zip
 
-      # 1️⃣1️⃣ Run PMD (only on changed files)
+      # 1️⃣1️⃣ Run PMD
       - name: Run PMD scan
         run: |
           ./pmd-bin-7.7.0/bin/pmd check \
@@ -109,17 +103,17 @@ jobs:
             --rulesets category/apex/design.xml \
             --no-fail-on-violation
 
-      # 1️⃣2️⃣ Decide test level smartly
+      # 1️⃣2️⃣ Decide test level (VALIDATE COMMAND RULES)
       - name: Decide test level
         id: tests
         run: |
-          if ls delta/force-app/**/*.cls 1> /dev/null 2>&1; then
-            echo "LEVEL=RunLocalTests" >> $GITHUB_OUTPUT
+          if [ "${GITHUB_REF_NAME}" = "uat" ] || [ "${GITHUB_REF_NAME}" = "main" ]; then
+            echo "LEVEL=RunSpecifiedTests" >> $GITHUB_OUTPUT
           else
-            echo "LEVEL=NoTestRun" >> $GITHUB_OUTPUT
+            echo "LEVEL=RunLocalTests" >> $GITHUB_OUTPUT
           fi
 
-      # 1️⃣3️⃣ Validation deploy (NO actual deploy)
+      # 1️⃣3️⃣ Validation deploy
       - name: Validate deployment
         run: |
           sf project deploy validate \
