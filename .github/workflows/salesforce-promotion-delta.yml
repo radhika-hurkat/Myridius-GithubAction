@@ -1,4 +1,4 @@
-name: Salesforce Promotion Delta Pipeline
+name: Salesforce Quality Gate
 
 on:
   push:
@@ -6,73 +6,122 @@ on:
       - qa
       - sit
       - uat
-      - prod
+      - main
+  pull_request:
+    branches:
+      - qa
+      - sit
+      - uat
+      - main
+    paths:
+      - "force-app/**"
 
 jobs:
-  deploy:
+  quality-gate:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      # 1️⃣ Checkout full history (delta needs it)
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # 2️⃣ Setup Node (stable, interview-safe)
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # 3️⃣ Install Salesforce CLI
       - name: Install Salesforce CLI
-        run: npm install -g @salesforce/cli
-
-      - name: Install sfdx-git-delta
-        run: sf plugins install sfdx-git-delta
-
-      - name: Determine commit range
         run: |
-          git fetch origin
-          FROM_COMMIT=$(git rev-parse HEAD~1)
-          TO_COMMIT=$(git rev-parse HEAD)
-          echo "FROM_COMMIT=$FROM_COMMIT" >> $GITHUB_ENV
-          echo "TO_COMMIT=$TO_COMMIT" >> $GITHUB_ENV
+          npm install -g @salesforce/cli
+          sf --version
 
-      - name: Generate delta
+      # 4️⃣ Allow unsigned plugins (cleaner than echo y)
+      - name: Allow sfdx-git-delta plugin
         run: |
+          mkdir -p ~/.config/sf
+          echo '["sfdx-git-delta"]' > ~/.config/sf/unsignedPluginAllowList.json
+
+      # 5️⃣ Install sfdx-git-delta
+      - name: Install delta plugin
+        run: |
+          sf plugins install sfdx-git-delta
+          sf plugins | grep sfdx-git-delta
+
+      # 6️⃣ Resolve commit range (PUSH vs PR)
+      - name: Resolve commit range
+        id: commits
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "FROM=${{ github.event.pull_request.base.sha }}" >> $GITHUB_OUTPUT
+            echo "TO=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+            echo "MODE=PR" >> $GITHUB_OUTPUT
+          else
+            echo "FROM=$(git rev-parse HEAD~1)" >> $GITHUB_OUTPUT
+            echo "TO=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+            echo "MODE=PUSH" >> $GITHUB_OUTPUT
+          fi
+
+      # 7️⃣ Generate delta
+      - name: Generate delta package
+        run: |
+          mkdir -p delta
           sf sgd source delta \
-            --from "$FROM_COMMIT" \
-            --to "$TO_COMMIT" \
+            --from "${{ steps.commits.outputs.FROM }}" \
+            --to "${{ steps.commits.outputs.TO }}" \
+            --source force-app \
             --output delta \
-            --generate-delta \
-            --source force-app
+            --generate-delta
 
+          echo "Delta contents:"
+          ls -R delta || true
+
+      # 8️⃣ Stop if no Salesforce changes
       - name: Check delta content
         run: |
           if [ ! -d "delta/force-app" ]; then
-            echo "No metadata changes found. Skipping deployment."
+            echo "No Salesforce metadata changes found."
             exit 0
           fi
 
-      - name: Authenticate to Salesforce
+      # 9️⃣ Validate package.xml (senior touch)
+      - name: Validate package.xml
         run: |
-          BRANCH_NAME="${GITHUB_REF##*/}"
-
-          if [ "$BRANCH_NAME" = "qa" ]; then
-            echo "${{ secrets.SF_QA_AUTH_URL }}" > auth.txt
-            sf org login sfdx-url --sfdx-url-file auth.txt --alias qa
-            echo "TARGET_ORG=qa" >> $GITHUB_ENV
-          elif [ "$BRANCH_NAME" = "sit" ]; then
-            echo "${{ secrets.SF_SIT_AUTH_URL }}" > auth.txt
-            sf org login sfdx-url --sfdx-url-file auth.txt --alias sit
-            echo "TARGET_ORG=sit" >> $GITHUB_ENV
-          elif [ "$BRANCH_NAME" = "uat" ]; then
-            echo "${{ secrets.SF_UAT_AUTH_URL }}" > auth.txt
-            sf org login sfdx-url --sfdx-url-file auth.txt --alias uat
-            echo "TARGET_ORG=uat" >> $GITHUB_ENV
-          elif [ "$BRANCH_NAME" = "prod" ]; then
-            echo "${{ secrets.SF_PROD_AUTH_URL }}" > auth.txt
-            sf org login sfdx-url --sfdx-url-file auth.txt --alias prod
-            echo "TARGET_ORG=prod" >> $GITHUB_ENV
+          if ! grep -q "<types>" delta/package/package.xml; then
+            echo "Invalid or empty package.xml"
+            exit 1
           fi
 
-      - name: Deploy delta
+      # 🔟 Install PMD
+      - name: Install PMD
         run: |
-          sf project deploy start \
-            --target-org $TARGET_ORG \
+          curl -L -o pmd.zip https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.7.0/pmd-dist-7.7.0-bin.zip
+          unzip -q pmd.zip
+
+      # 1️⃣1️⃣ Run PMD (only on changed files)
+      - name: Run PMD scan
+        run: |
+          ./pmd-bin-7.7.0/bin/pmd check \
+            --dir delta/force-app \
+            --rulesets category/apex/design.xml \
+            --no-fail-on-violation
+
+      # 1️⃣2️⃣ Decide test level smartly
+      - name: Decide test level
+        id: tests
+        run: |
+          if ls delta/force-app/**/*.cls 1> /dev/null 2>&1; then
+            echo "LEVEL=RunLocalTests" >> $GITHUB_OUTPUT
+          else
+            echo "LEVEL=NoTestRun" >> $GITHUB_OUTPUT
+          fi
+
+      # 1️⃣3️⃣ Validation deploy (NO actual deploy)
+      - name: Validate deployment
+        run: |
+          sf project deploy validate \
             --source-dir delta/force-app \
-            --test-level NoTestRun
+            --test-level ${{ steps.tests.outputs.LEVEL }}
