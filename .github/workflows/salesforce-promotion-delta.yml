@@ -43,7 +43,7 @@ jobs:
           sf plugins install sfdx-git-delta
           sf plugins | grep sfdx-git-delta
 
-      # 6️⃣ Decide target org + auth
+      # 6️⃣ Set target org + auth (NO default assumption)
       - name: Set target org & auth
         run: |
           if [ "${GITHUB_REF_NAME}" = "qa" ]; then
@@ -60,7 +60,7 @@ jobs:
             echo "SF_AUTH_URL=${{ secrets.SF_PROD_AUTH_URL }}" >> $GITHUB_ENV
           fi
 
-      # 7️⃣ Authenticate Salesforce (NO default org assumption)
+      # 7️⃣ Authenticate Salesforce
       - name: Authenticate Salesforce
         run: |
           echo "$SF_AUTH_URL" > auth.txt
@@ -69,7 +69,7 @@ jobs:
             --alias $TARGET_ORG \
             --set-default
 
-      # 8️⃣ Resolve commit range
+      # 8️⃣ Resolve commit range (PR vs PUSH)
       - name: Resolve commit range
         id: commits
         run: |
@@ -92,22 +92,21 @@ jobs:
             --output delta \
             --generate-delta
 
-      # 🔟 Exit if no delta
+      # 🔟 Check delta existence
       - name: Check delta
-        id: delta_check
         run: |
           if [ ! -d "delta/force-app" ]; then
             echo "NO_DELTA=true" >> $GITHUB_ENV
           fi
 
-      # 1️⃣1️⃣ Install PMD
+      # 1️⃣1️⃣ Install PMD (only if delta exists)
       - name: Install PMD
         if: env.NO_DELTA != 'true'
         run: |
           curl -L -o pmd.zip https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.7.0/pmd-dist-7.7.0-bin.zip
           unzip -q pmd.zip
 
-      # 1️⃣2️⃣ Run PMD only when delta exists
+      # 1️⃣2️⃣ Run PMD (only when delta exists)
       - name: Run PMD
         if: env.NO_DELTA != 'true'
         run: |
@@ -116,7 +115,7 @@ jobs:
             --rulesets category/apex/design.xml \
             --no-fail-on-violation
 
-      # 1️⃣3️⃣ Decide test level (VALID for validate)
+      # 1️⃣3️⃣ Decide test level (VALIDATE-SAFE)
       - name: Decide test level
         id: tests
         run: |
