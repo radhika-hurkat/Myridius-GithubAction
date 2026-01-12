@@ -43,7 +43,7 @@ jobs:
           sf plugins install sfdx-git-delta
           sf plugins | grep sfdx-git-delta
 
-      # 6️⃣ Set target org & auth
+      # 6️⃣ Resolve target org
       - name: Set target org
         run: |
           if [ "${GITHUB_REF_NAME}" = "qa" ]; then
@@ -92,36 +92,38 @@ jobs:
             --output delta \
             --generate-delta
 
-      # 🔟 Stop if no delta
+      # 🔟 Check delta existence (HARD STOP)
       - name: Check delta
+        id: delta_check
         run: |
           if [ ! -d "delta/force-app" ]; then
-            echo "No Salesforce metadata changes found."
-            exit 0
+            echo "NO_DELTA=true" >> $GITHUB_ENV
+            echo "No Salesforce metadata changes detected."
           fi
 
-      # 🔟➕ SAFE package.xml validation (requirement-compliant)
+      # 🔟➕ Safe package.xml validation
       - name: Validate package.xml (safe)
+        if: env.NO_DELTA != 'true'
         run: |
           if [ -f "delta/package/package.xml" ]; then
             echo "package.xml found"
             if grep -q "<types>" delta/package/package.xml; then
-              echo "package.xml contains <types> – valid"
+              echo "package.xml valid"
             else
-              echo "package.xml has no <types> – allowed for source-based delta"
-              echo "Continuing without failure"
+              echo "package.xml empty but allowed for source delta"
             fi
           else
-            echo "No package.xml generated – skipping validation"
+            echo "No package.xml generated"
           fi
 
       # 1️⃣1️⃣ Decide test strategy
       - name: Decide test strategy
         id: tests
+        if: env.NO_DELTA != 'true'
         run: |
           if [ "$TARGET_ORG" = "uat" ] || [ "$TARGET_ORG" = "prod" ]; then
             if [ -f tests-to-run.txt ] && [ -s tests-to-run.txt ]; then
-              TESTS=$(paste -sd, tests-to-run.txt)
+              TESTS=$(tr '\n' ' ' < tests-to-run.txt)
               echo "LEVEL=RunSpecifiedTests" >> $GITHUB_OUTPUT
               echo "TESTS=$TESTS" >> $GITHUB_OUTPUT
             else
@@ -131,15 +133,16 @@ jobs:
             echo "LEVEL=RunLocalTests" >> $GITHUB_OUTPUT
           fi
 
-      # 1️⃣2️⃣ Validate deployment
+      # 1️⃣2️⃣ Validate deployment (FINAL SAFE)
       - name: Validate deployment
+        if: env.NO_DELTA != 'true'
         run: |
           if [ "${{ steps.tests.outputs.LEVEL }}" = "RunSpecifiedTests" ]; then
             sf project deploy validate \
               --source-dir delta/force-app \
               --target-org $TARGET_ORG \
               --test-level RunSpecifiedTests \
-              --tests "${{ steps.tests.outputs.TESTS }}"
+              --tests ${{ steps.tests.outputs.TESTS }}
           else
             sf project deploy validate \
               --source-dir delta/force-app \
