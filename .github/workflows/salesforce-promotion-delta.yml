@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout full history (delta needs it)
-      - name: Checkout source
+      # 1️⃣ Checkout full history
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -32,13 +32,13 @@ jobs:
           sf --version
 
       # 4️⃣ Allow unsigned plugin
-      - name: Allow sfdx-git-delta plugin
+      - name: Allow sfdx-git-delta
         run: |
           mkdir -p ~/.config/sf
           echo '["sfdx-git-delta"]' > ~/.config/sf/unsignedPluginAllowList.json
 
       # 5️⃣ Install sfdx-git-delta
-      - name: Install sfdx-git-delta
+      - name: Install delta plugin
         run: |
           sf plugins install sfdx-git-delta
           sf plugins | grep sfdx-git-delta
@@ -96,8 +96,21 @@ jobs:
       - name: Check delta
         run: |
           if [ ! -d "delta/force-app" ]; then
-            echo "No Salesforce changes found."
+            echo "No Salesforce metadata changes found."
             exit 0
+          fi
+
+      # 🔟➕ Validate package.xml ONLY if it exists (requirement + safe)
+      - name: Validate package.xml (conditional)
+        run: |
+          if [ -f "delta/package/package.xml" ]; then
+            echo "package.xml found. Validating..."
+            if ! grep -q "<types>" delta/package/package.xml; then
+              echo "Invalid package.xml: no <types> found"
+              exit 1
+            fi
+          else
+            echo "No package.xml generated. Skipping validation."
           fi
 
       # 1️⃣1️⃣ Decide test strategy
