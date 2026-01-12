@@ -1,0 +1,50 @@
+name: Auto Promotion PR
+
+on:
+  push:
+    branches:
+      - qa
+      - sit
+      - uat
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install GitHub CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install gh -y
+
+      - name: Authenticate GitHub CLI
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: Create promotion PR
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "qa" ]; then
+            BASE="sit"
+            HEAD="qa"
+          elif [ "${GITHUB_REF_NAME}" = "sit" ]; then
+            BASE="uat"
+            HEAD="sit"
+          elif [ "${GITHUB_REF_NAME}" = "uat" ]; then
+            BASE="main"
+            HEAD="uat"
+          else
+            echo "No promotion needed"
+            exit 0
+          fi
+
+          echo "Creating PR from $HEAD to $BASE"
+
+          gh pr create \
+            --base "$BASE" \
+            --head "$HEAD" \
+            --title "Auto Promotion: $HEAD → $BASE" \
+            --body "Automated promotion PR generated after merge to $HEAD." \
+            --repo "${{ github.repository }}"
