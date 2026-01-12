@@ -118,6 +118,7 @@ jobs:
       # 1️⃣3️⃣ Decide test level (VALIDATE-SAFE)
       - name: Decide test level
         id: tests
+        if: env.NO_DELTA != 'true'
         run: |
           if [ "$TARGET_ORG" = "uat" ] || [ "$TARGET_ORG" = "prod" ]; then
             echo "LEVEL=RunSpecifiedTests" >> $GITHUB_OUTPUT

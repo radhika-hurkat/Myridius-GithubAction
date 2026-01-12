@@ -1,0 +1,26 @@
+name: Auto Promotion PR (QA → SIT)
+
+on:
+  push:
+    branches:
+      - qa
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Create PR from QA to SIT
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          source: qa
+          target: sit
+          title: "Auto Promotion: QA → SIT"
+          body: |
+            This PR was automatically created after QA changes.
+            Ready for SIT validation.
+          labels: auto-promotion
