@@ -1,50 +1,26 @@
-name: Auto Promotion PR
+name: Auto Promotion PR (QA → SIT)
 
 on:
   push:
     branches:
       - qa
-      - sit
-      - uat
 
 jobs:
-  create-pr:
+  promote:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install GitHub CLI
-        run: |
-          sudo apt-get update
-          sudo apt-get install gh -y
-
-      - name: Authenticate GitHub CLI
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-
-      - name: Create promotion PR
-        run: |
-          if [ "${GITHUB_REF_NAME}" = "qa" ]; then
-            BASE="sit"
-            HEAD="qa"
-          elif [ "${GITHUB_REF_NAME}" = "sit" ]; then
-            BASE="uat"
-            HEAD="sit"
-          elif [ "${GITHUB_REF_NAME}" = "uat" ]; then
-            BASE="main"
-            HEAD="uat"
-          else
-            echo "No promotion needed"
-            exit 0
-          fi
-
-          echo "Creating PR from $HEAD to $BASE"
-
-          gh pr create \
-            --base "$BASE" \
-            --head "$HEAD" \
-            --title "Auto Promotion: $HEAD → $BASE" \
-            --body "Automated promotion PR generated after merge to $HEAD." \
-            --repo "${{ github.repository }}"
+      - name: Create PR from QA to SIT
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          source: qa
+          target: sit
+          title: "Auto Promotion: QA → SIT"
+          body: |
+            This PR was automatically created after QA changes.
+            Ready for SIT validation.
+          labels: auto-promotion
