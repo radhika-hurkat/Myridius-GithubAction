@@ -1,31 +1,17 @@
-@IsTest
+@isTest
 public class PipelineDemoApexV2Test {
 
-    @IsTest
+    @isTest
     static void testSayHello() {
         // Arrange
         Test.startTest();
+        
+        // Act
         String result = PipelineDemoApexV2.sayHello();
+        
+        // Assert
+        System.assertEquals('Hello from QA Pipeline', result);
+        
         Test.stopTest();
-
-        // Assert (meaningful assertion)
-        System.assertEquals(
-            'Hello from QA Pipeline V2',
-            result,
-            'sayHello() should return expected message'
-        );
-    }
-
-    @IsTest
-    static void testNotNullResponse() {
-        // Additional execution for coverage
-        String response = PipelineDemoApexV2.sayHello();
-
-        // PMD-safe assertion (NOT dummy)
-        System.assertNotEquals(
-            null,
-            response,
-            'Response should never be null'
-        );
     }
 }
