@@ -7,18 +7,4 @@
         <shortDescription>Pipeline_Check_Label</shortDescription>
         <value>QA pipeline validation test</value>
     </labels>
-    <labels>
-        <fullName>Pipeline_Run_Check</fullName>
-        <language>en_US</language>
-        <protected>true</protected>
-        <shortDescription>Pipeline_Run_Check</shortDescription>
-        <value>Pipeline working without Apex</value>
-    </labels>
-    <labels>
-        <fullName>Pipeline_Run_Check2</fullName>
-        <language>en_US</language>
-        <protected>true</protected>
-        <shortDescription>Pipeline_Run_Check2</shortDescription>
-        <value>new changes to yml</value>
-    </labels>
 </CustomLabels>
