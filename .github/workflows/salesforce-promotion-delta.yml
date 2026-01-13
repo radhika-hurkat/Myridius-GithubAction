@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repo
-      - name: Checkout repository
+      # 1️⃣ Checkout full history
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -31,7 +31,7 @@ jobs:
           npm install -g @salesforce/cli
           sf --version
 
-      # 4️⃣ Allow sfdx-git-delta
+      # 4️⃣ Allow unsigned plugin
       - name: Allow sfdx-git-delta
         run: |
           mkdir -p ~/.config/sf
@@ -41,10 +41,9 @@ jobs:
       - name: Install sfdx-git-delta
         run: |
           sf plugins install sfdx-git-delta
-          sf plugins | grep sfdx-git-delta
 
       # 6️⃣ Map branch → org
-      - name: Set target org
+      - name: Set target org & auth
         run: |
           if [ "${GITHUB_REF_NAME}" = "qa" ]; then
             echo "TARGET_ORG=qa" >> $GITHUB_ENV
@@ -92,37 +91,34 @@ jobs:
             --output delta \
             --generate-delta
 
-      # 🔟 Check delta
+      # 🔟 Skip if no delta
       - name: Check delta
         run: |
           if [ ! -d "delta/force-app" ]; then
             echo "NO_DELTA=true" >> $GITHUB_ENV
+            echo "No Salesforce changes found"
           fi
 
-      # 1️⃣1️⃣ Decide test strategy (FINAL FIX)
-      - name: Decide test strategy
+      # 1️⃣1️⃣ Decide test level (FINAL FIX)
+      - name: Decide test level
         id: tests
         if: env.NO_DELTA != 'true'
         run: |
-          if [ "$TARGET_ORG" = "uat" ] || [ "$TARGET_ORG" = "prod" ]; then
-            if [ -f tests-to-run.txt ] && [ -s tests-to-run.txt ]; then
-              TESTS=$(tr '\n' ' ' < tests-to-run.txt)
-              echo "LEVEL=RunSpecifiedTests" >> $GITHUB_OUTPUT
-              echo "TESTS=$TESTS" >> $GITHUB_OUTPUT
-            else
-              echo "LEVEL=RunLocalTests" >> $GITHUB_OUTPUT
-              echo "TESTS=" >> $GITHUB_OUTPUT
-            fi
+          if [ "$TARGET_ORG" = "prod" ] && [ -f tests-to-run.txt ] && [ -s tests-to-run.txt ]; then
+            TESTS=$(tr '\n' ' ' < tests-to-run.txt)
+            echo "LEVEL=RunSpecifiedTests" >> $GITHUB_OUTPUT
+            echo "TESTS=$TESTS" >> $GITHUB_OUTPUT
+            echo "Using RunSpecifiedTests: $TESTS"
           else
             echo "LEVEL=RunLocalTests" >> $GITHUB_OUTPUT
-            echo "TESTS=" >> $GITHUB_OUTPUT
+            echo "Using RunLocalTests"
           fi
 
-      # 1️⃣2️⃣ Validate deployment (BULLETPROOF)
+      # 1️⃣2️⃣ Validate deployment (SAFE)
       - name: Validate deployment
         if: env.NO_DELTA != 'true'
         run: |
-          if [ "${{ steps.tests.outputs.LEVEL }}" = "RunSpecifiedTests" ] && [ -n "${{ steps.tests.outputs.TESTS }}" ]; then
+          if [ "${{ steps.tests.outputs.LEVEL }}" = "RunSpecifiedTests" ]; then
             sf project deploy validate \
               --source-dir delta/force-app \
               --target-org $TARGET_ORG \
