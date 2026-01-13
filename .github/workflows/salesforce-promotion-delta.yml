@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout full history
-      - name: Checkout repo
+      # 1️⃣ Checkout repo (full history for delta)
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -31,8 +31,8 @@ jobs:
           npm install -g @salesforce/cli
           sf --version
 
-      # 4️⃣ Allow unsigned plugin
-      - name: Allow sfdx-git-delta
+      # 4️⃣ Allow sfdx-git-delta plugin
+      - name: Allow sfdx-git-delta plugin
         run: |
           mkdir -p ~/.config/sf
           echo '["sfdx-git-delta"]' > ~/.config/sf/unsignedPluginAllowList.json
@@ -42,7 +42,7 @@ jobs:
         run: |
           sf plugins install sfdx-git-delta
 
-      # 6️⃣ Map branch → org
+      # 6️⃣ Map branch → target org
       - name: Set target org & auth
         run: |
           if [ "${GITHUB_REF_NAME}" = "qa" ]; then
@@ -88,18 +88,17 @@ jobs:
             --from "${{ steps.commits.outputs.FROM }}" \
             --to "${{ steps.commits.outputs.TO }}" \
             --source force-app \
-            --output delta \
-            --generate-delta
+            --output delta
 
-      # 🔟 Skip if no delta
+      # 🔟 Check delta exists
       - name: Check delta
         run: |
           if [ ! -d "delta/force-app" ]; then
             echo "NO_DELTA=true" >> $GITHUB_ENV
-            echo "No Salesforce changes found"
+            echo "No Salesforce changes detected"
           fi
 
-      # 1️⃣1️⃣ Decide test level (FINAL FIX)
+      # 1️⃣1️⃣ Decide test level (FINAL SAFE LOGIC)
       - name: Decide test level
         id: tests
         if: env.NO_DELTA != 'true'
@@ -114,7 +113,7 @@ jobs:
             echo "Using RunLocalTests"
           fi
 
-      # 1️⃣2️⃣ Validate deployment (SAFE)
+      # 1️⃣2️⃣ Validate deployment (NO ERROR GUARANTEE)
       - name: Validate deployment
         if: env.NO_DELTA != 'true'
         run: |
