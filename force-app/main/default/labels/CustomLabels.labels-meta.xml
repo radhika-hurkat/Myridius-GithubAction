@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">
+    <labels>
+        <fullName>Pipeline_Check_Label</fullName>
+        <language>en_US</language>
+        <protected>true</protected>
+        <shortDescription>Pipeline_Check_Label</shortDescription>
+        <value>QA pipeline validation test</value>
+    </labels>
+    <labels>
+        <fullName>Pipeline_Run_Check</fullName>
+        <language>en_US</language>
+        <protected>true</protected>
+        <shortDescription>Pipeline_Run_Check</shortDescription>
+        <value>Pipeline working without Apex</value>
+    </labels>
+    <labels>
+        <fullName>Pipeline_Run_Check2</fullName>
+        <language>en_US</language>
+        <protected>true</protected>
+        <shortDescription>Pipeline_Run_Check2</shortDescription>
+        <value>new changes to yml</value>
+    </labels>
+</CustomLabels>
