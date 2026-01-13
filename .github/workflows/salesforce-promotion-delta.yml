@@ -51,8 +51,8 @@ jobs:
           sf plugins install sfdx-git-delta
           sf plugins | grep sfdx-git-delta
 
-      # 6️⃣ Map branch to target org
-      - name: Set target org
+      # 6️⃣ Set target org & auth
+      - name: Set target org & auth
         run: |
           if [ "${GITHUB_REF_NAME}" = "qa" ]; then
             echo "TARGET_ORG=qa" >> $GITHUB_ENV
@@ -100,32 +100,32 @@ jobs:
             --output delta \
             --generate-delta
 
-      # 🔟 Check if delta exists
+      # 🔟 Check delta existence
       - name: Check delta
-        id: delta_check
         run: |
           if [ ! -d "delta/force-app" ]; then
             echo "NO_DELTA=true" >> $GITHUB_ENV
-            echo "No Salesforce changes detected"
+            echo "No Salesforce metadata changes detected"
           fi
 
-      # 🔟➕ Safe package.xml validation
-      - name: Validate package.xml safely
+      # 1️⃣1️⃣ Install PMD
+      - name: Install PMD
         if: env.NO_DELTA != 'true'
         run: |
-          if [ -f "delta/package/package.xml" ]; then
-            echo "package.xml found"
-            if grep -q "<types>" delta/package/package.xml; then
-              echo "package.xml contains metadata"
-            else
-              echo "package.xml empty but allowed for source delta"
-            fi
-          else
-            echo "No package.xml generated"
-          fi
+          curl -L -o pmd.zip https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.7.0/pmd-dist-7.7.0-bin.zip
+          unzip -q pmd.zip
 
-      # 1️⃣1️⃣ Decide test strategy (FINAL FIX)
-      - name: Decide test strategy
+      # 1️⃣2️⃣ Run PMD
+      - name: Run PMD
+        if: env.NO_DELTA != 'true'
+        run: |
+          ./pmd-bin-7.7.0/bin/pmd check \
+            --dir delta/force-app \
+            --rulesets category/apex/design.xml \
+            --no-fail-on-violation
+
+      # 1️⃣3️⃣ Decide test level (SAFE LOGIC)
+      - name: Decide test level
         id: tests
         if: env.NO_DELTA != 'true'
         run: |
@@ -134,16 +134,14 @@ jobs:
               TESTS=$(tr '\n' ' ' < tests-to-run.txt)
               echo "LEVEL=RunSpecifiedTests" >> $GITHUB_OUTPUT
               echo "TESTS=$TESTS" >> $GITHUB_OUTPUT
-              echo "Using specified tests: $TESTS"
             else
               echo "LEVEL=RunLocalTests" >> $GITHUB_OUTPUT
-              echo "No tests specified, falling back to RunLocalTests"
             fi
           else
             echo "LEVEL=RunLocalTests" >> $GITHUB_OUTPUT
           fi
 
-      # 1️⃣2️⃣ Validate deployment (NO FAILURES NOW)
+      # 1️⃣4️⃣ Validate deployment
       - name: Validate deployment
         if: env.NO_DELTA != 'true'
         run: |
@@ -157,5 +155,5 @@ jobs:
             sf project deploy validate \
               --source-dir delta/force-app \
               --target-org $TARGET_ORG \
-              --test-level RunLocalTests
+              --test-level ${{ steps.tests.outputs.LEVEL }}
           fi
