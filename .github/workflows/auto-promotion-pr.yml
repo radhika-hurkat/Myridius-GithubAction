@@ -1,45 +1,55 @@
-name: Auto Promotion PR (QA → SIT)
+name: Auto Promotion PR
 
 on:
   push:
     branches:
       - qa
+      - sit
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
 
 jobs:
-  create-pr:
+  promote:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Create PR from QA to SIT
+      - name: Create Promotion PR
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
+            const branch = context.ref.replace('refs/heads/', '');
+            let base, head, title;
 
-            // Check if PR already exists
+            if (branch === 'qa') {
+              head = 'qa';
+              base = 'sit';
+              title = 'Auto Promotion: QA → SIT';
+            } else if (branch === 'sit') {
+              head = 'sit';
+              base = 'uat';
+              title = 'Auto Promotion: SIT → UAT';
+            } else {
+              return;
+            }
+
             const prs = await github.rest.pulls.list({
-              owner,
-              repo,
-              head: `${owner}:qa`,
-              base: 'sit',
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${head}`,
+              base: base,
               state: 'open'
             });
 
             if (prs.data.length === 0) {
               await github.rest.pulls.create({
-                owner,
-                repo,
-                title: 'Auto Promotion: QA → SIT',
-                head: 'qa',
-                base: 'sit',
-                body: 'Auto-generated PR after successful merge to QA.'
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                head: head,
+                base: base,
+                body: 'Auto-generated promotion PR'
               });
-              console.log('PR created: QA → SIT');
-            } else {
-              console.log('PR already exists. Skipping.');
             }
