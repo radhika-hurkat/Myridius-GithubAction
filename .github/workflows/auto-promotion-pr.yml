@@ -1,26 +1,42 @@
 name: Auto Promotion PR (QA → SIT)
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches:
       - qa
 
 jobs:
-  promote:
+  create-pr:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
       - name: Create PR from QA to SIT
-        uses: peter-evans/create-pull-request@v6
+        uses: actions/github-script@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          source: qa
-          target: sit
-          title: "Auto Promotion: QA → SIT"
-          body: |
-            This PR was automatically created after QA changes.
-            Ready for SIT validation.
-          labels: auto-promotion
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+
+            const existingPRs = await github.rest.pulls.list({
+              owner,
+              repo,
+              base: 'sit',
+              head: `${owner}:qa`,
+              state: 'open'
+            });
+
+            if (existingPRs.data.length > 0) {
+              console.log('PR already exists. Skipping.');
+              return;
+            }
+
+            await github.rest.pulls.create({
+              owner,
+              repo,
+              title: 'Auto Promotion: QA → SIT',
+              head: 'qa',
+              base: 'sit',
+              body: 'Auto-generated PR after successful merge to QA.'
+            });

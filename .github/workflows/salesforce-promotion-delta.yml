@@ -2,9 +2,17 @@ name: Salesforce Promotion Delta Pipeline
 
 on:
   push:
-    branches: [qa, sit, uat, main]
+    branches:
+      - qa
+      - sit
+      - uat
+      - main
   pull_request:
-    branches: [qa, sit, uat, main]
+    branches:
+      - qa
+      - sit
+      - uat
+      - main
     paths:
       - "force-app/**"
 
@@ -13,8 +21,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout full history
-      - name: Checkout repo
+      # 1️⃣ Checkout full git history
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -32,13 +40,13 @@ jobs:
           sf --version
 
       # 4️⃣ Allow unsigned plugin
-      - name: Allow sfdx-git-delta
+      - name: Allow sfdx-git-delta plugin
         run: |
           mkdir -p ~/.config/sf
           echo '["sfdx-git-delta"]' > ~/.config/sf/unsignedPluginAllowList.json
 
       # 5️⃣ Install sfdx-git-delta
-      - name: Install delta plugin
+      - name: Install sfdx-git-delta
         run: |
           sf plugins install sfdx-git-delta
           sf plugins | grep sfdx-git-delta
@@ -60,7 +68,7 @@ jobs:
             echo "SF_AUTH_URL=${{ secrets.SF_PROD_AUTH_URL }}" >> $GITHUB_ENV
           fi
 
-      # 7️⃣ Authenticate Salesforce
+      # 7️⃣ Authenticate Salesforce org
       - name: Authenticate Salesforce
         run: |
           echo "$SF_AUTH_URL" > auth.txt
