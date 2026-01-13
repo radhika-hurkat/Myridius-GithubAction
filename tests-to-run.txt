@@ -1,0 +1,3 @@
+PipelineDemoApexTest
+AccountTriggerTest
+PipelineDemoApexV2Test
