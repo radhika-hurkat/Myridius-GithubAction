@@ -7,4 +7,15 @@
         <shortDescription>Pipeline_Check_Label</shortDescription>
         <value>QA pipeline validation test</value>
     </labels>
+    <labels>
+        <fullName>Pipeline_QA_Trigger_2</fullName>
+        <language>en_US</language>
+        <protected>true</protected>
+        <shortDescription>Pipeline_QA_Trigger_2</shortDescription>
+        <value>sf project deploy start \
+              -x delta/package/package.xml \
+              -o &quot;$ALIAS&quot; \
+              --dry-run \
+              -l NoTestRun</value>
+    </labels>
 </CustomLabels>
